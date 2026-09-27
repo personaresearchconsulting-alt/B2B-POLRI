@@ -684,7 +684,7 @@ footer {
 
                         <div class="card-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                                 <line x1="16" y1="13" x2="8" y2="13"></line>
                                 <line x1="16" y1="17" x2="8" y2="17"></line>
@@ -723,7 +723,7 @@ footer {
 
                         <div class="card-icon">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round">
-                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2-2V8z"></path>
                                 <polyline points="14 2 14 8 20 8"></polyline>
                                 <line x1="16" y1="13" x2="8" y2="13"></line>
                                 <line x1="16" y1="17" x2="8" y2="17"></line>
@@ -1203,6 +1203,10 @@ const SCRIPT_URL =
     "https://script.google.com/macros/s/AKfycbzbDujF3XDmzbFD3Od4HFWSh2fw_Tui7mnPDVbrtlvK9Df11elfiRFdTpNtb9Up27Y3/exec";
 
 
+const INDIVIDUAL_SCRIPT_URL =
+    "https://script.google.com/macros/s/AKfycbxJbyouJOFHeu536_aa2EXX8bkrk4guKpTqDM49VZyvTl2xtUdU-QTdOEu0LujXuqyq/exec";
+
+
 /* ==================================================
    LINK CAT POLRI
    ================================================== */
@@ -1342,9 +1346,11 @@ function unlockPage(data) {
 
     accessInfo.innerHTML =
         "<strong>Akses aktif</strong><br>" +
-        "Paket: " +
-        (data.paket || "-") +
-        "<br>" +
+        (
+            data.individual
+                ? "Kode: " + (data.password || "-") + "<br>"
+                : "Paket: " + (data.paket || "-") + "<br>"
+        ) +
         "Berlaku sampai: " +
         (
             data.expiry
@@ -1380,14 +1386,79 @@ function lockPage() {
 
 
 /* ==================================================
+   LOGIN B2B LAMA
+   ================================================== */
+
+async function loginB2B(password, deviceId) {
+
+    const url =
+        SCRIPT_URL +
+        "?password=" +
+        encodeURIComponent(password) +
+        "&deviceId=" +
+        encodeURIComponent(deviceId);
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "GET",
+                cache: "no-store"
+            }
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            "HTTP " +
+            response.status
+        );
+    }
+
+    return await response.json();
+}
+
+
+/* ==================================================
+   LOGIN INDIVIDUAL BARU
+   ================================================== */
+
+async function loginIndividual(password, deviceId) {
+
+    const url =
+        INDIVIDUAL_SCRIPT_URL +
+        "?password=" +
+        encodeURIComponent(password) +
+        "&deviceId=" +
+        encodeURIComponent(deviceId);
+
+    const response =
+        await fetch(
+            url,
+            {
+                method: "GET",
+                cache: "no-store"
+            }
+        );
+
+    if (!response.ok) {
+
+        throw new Error(
+            "HTTP " +
+            response.status
+        );
+    }
+
+    return await response.json();
+}
+
+
+/* ==================================================
    LOGIN
    ================================================== */
 
 async function doLogin() {
 
-    /*
-     * Password yang diketik user.
-     */
     const typedPassword =
         passwordInput.value.trim();
 
@@ -1422,18 +1493,12 @@ async function doLogin() {
          * TEST LOGIN KHUSUS PEMILIK
          * ==================================================
          *
-         * yeari0501 hanya menjadi ALIAS TEST.
+         * yeari0501 tetap menjadi ALIAS TEST.
          *
-         * Yang dikirim ke Apps Script tetap:
+         * Yang dikirim ke Apps Script B2B tetap:
          * PRC00
          *
-         * Artinya:
-         *
-         * yeari0501 -> PRC00
-         * PRC00     -> PRC00
-         * B2B       -> password B2B masing-masing
-         *
-         * Tidak mengubah data password di Google Sheet.
+         * Sistem B2B lama tidak berubah.
          */
 
         const password =
@@ -1442,39 +1507,82 @@ async function doLogin() {
                 : typedPassword;
 
 
-        const url =
-            SCRIPT_URL +
-            "?password=" +
-            encodeURIComponent(password) +
-            "&deviceId=" +
-            encodeURIComponent(deviceId);
+        /*
+         * ==================================================
+         * INDIVIDUAL CAT
+         * ==================================================
+         *
+         * Kode individual memiliki format:
+         * CAT + 3 karakter
+         *
+         * Contoh:
+         * CAT7KQ
+         * CAT234
+         *
+         * Jika kode diawali CAT, langsung diperiksa
+         * ke Apps Script individual.
+         *
+         * Sistem B2B lama tidak disentuh.
+         */
+
+        if (
+            password
+                .toUpperCase()
+                .startsWith("CAT")
+        ) {
+
+            const individualData =
+                await loginIndividual(
+                    password,
+                    deviceId
+                );
 
 
-        const response =
-            await fetch(
-                url,
-                {
-                    method: "GET",
-                    cache: "no-store"
-                }
+            console.log(
+                "POLRI INDIVIDUAL ACCESS:",
+                individualData
             );
 
 
-        if (!response.ok) {
+            if (
+                String(individualData.status || "")
+                    .toLowerCase()
+                !== "success"
+            ) {
 
-            throw new Error(
-                "HTTP " +
-                response.status
-            );
+                loginMessage.textContent =
+                    individualData.message ||
+                    "Kode akses tidak valid.";
+
+                passwordInput.value = "";
+
+                passwordInput.focus();
+
+                return;
+            }
+
+
+            unlockPage(individualData);
+
+            return;
         }
 
 
+        /*
+         * ==================================================
+         * B2B LAMA
+         * ==================================================
+         */
+
         const data =
-            await response.json();
+            await loginB2B(
+                password,
+                deviceId
+            );
 
 
         console.log(
-            "POLRI ACCESS:",
+            "POLRI B2B ACCESS:",
             data
         );
 
