@@ -561,8 +561,6 @@ footer {
 
 <div id="protectedContent" style="display:none;">
 
-<!-- NAVBAR -->
-
 <header class="navbar">
 
     <div class="nav-container">
@@ -605,8 +603,6 @@ footer {
 
 </header>
 
-
-<!-- MAIN CONTENT -->
 
 <main class="main-container">
 
@@ -1184,8 +1180,6 @@ footer {
 </main>
 
 
-<!-- FOOTER -->
-
 <footer>
     © Persona Research & Consulting
 </footer>
@@ -1199,12 +1193,20 @@ footer {
 
 <script>
 
+/* ==================================================
+   APPS SCRIPT B2B LAMA
+   ================================================== */
+
 const SCRIPT_URL =
     "https://script.google.com/macros/s/AKfycbzbDujF3XDmzbFD3Od4HFWSh2fw_Tui7mnPDVbrtlvK9Df11elfiRFdTpNtb9Up27Y3/exec";
 
 
+/* ==================================================
+   APPS SCRIPT INDIVIDUAL BARU
+   ================================================== */
+
 const INDIVIDUAL_SCRIPT_URL =
-    "https://script.google.com/macros/s/AKfycbxJbyouJOFHeu536_aa2EXX8bkrk4guKpTqDM49VZyvTl2xtUdU-QTdOEu0LujXuqyq/exec";
+    "https://script.google.com/macros/s/AKfycbxqe_SvS0wH_iaTUwCNLufJ9wmqJreHFj7fZfGq7PqJFqX3FoujguRCOr2VuXZoBGyh/exec";
 
 
 /* ==================================================
@@ -1316,8 +1318,27 @@ function formatDate(timestamp) {
         return "-";
     }
 
-    const date =
-        new Date(Number(timestamp));
+    let date;
+
+    /*
+     * Backend individual mengirim ISO string:
+     * 2026-10-13T06:05:01.659Z
+     *
+     * Backend lama bisa mengirim timestamp angka.
+     */
+
+    if (
+        typeof timestamp === "string" &&
+        isNaN(Number(timestamp))
+    ) {
+
+        date = new Date(timestamp);
+
+    } else {
+
+        date = new Date(Number(timestamp));
+
+    }
 
     if (isNaN(date.getTime())) {
         return "-";
@@ -1335,6 +1356,18 @@ function formatDate(timestamp) {
 
 
 /* ==================================================
+   INDIVIDUAL CODE DETECTION
+   ================================================== */
+
+function isIndividualCode(code) {
+
+    return /^(14POL|14TNI|14KDN|30POL|30TNI|30KDN)\d{2}$/i.test(
+        code
+    );
+}
+
+
+/* ==================================================
    UNLOCK
    ================================================== */
 
@@ -1344,19 +1377,51 @@ function unlockPage(data) {
 
     protectedContent.style.display = "block";
 
+
+    /*
+     * Tampilkan informasi akses
+     */
+
+    accessInfo.style.display = "block";
+
+
+    /*
+     * Untuk Individual:
+     * backend menggunakan "code".
+     *
+     * Kita simpan juga sebagai "password"
+     * agar struktur lama tetap kompatibel.
+     */
+
+    const accessCode =
+        data.individual
+            ? (data.password || data.code || "-")
+            : null;
+
+
     accessInfo.innerHTML =
         "<strong>Akses aktif</strong><br>" +
+
         (
             data.individual
-                ? "Kode: " + (data.password || "-") + "<br>"
+                ? "Kode: " + accessCode + "<br>"
                 : "Paket: " + (data.paket || "-") + "<br>"
         ) +
+
+        (
+            data.produk
+                ? "Produk: " + data.produk + "<br>"
+                : ""
+        ) +
+
         "Berlaku sampai: " +
+
         (
             data.expiry
                 ? formatDate(data.expiry)
                 : "Unlimited"
         );
+
 
     sessionStorage.setItem(
         "prc_polri_access",
@@ -1374,6 +1439,8 @@ function lockPage() {
     loginOverlay.style.display = "flex";
 
     protectedContent.style.display = "none";
+
+    accessInfo.style.display = "none";
 
     passwordInput.value = "";
 
@@ -1423,14 +1490,15 @@ async function loginB2B(password, deviceId) {
    LOGIN INDIVIDUAL BARU
    ================================================== */
 
-async function loginIndividual(password, deviceId) {
+async function loginIndividual(code, deviceId) {
 
     const url =
         INDIVIDUAL_SCRIPT_URL +
-        "?password=" +
-        encodeURIComponent(password) +
+        "?code=" +
+        encodeURIComponent(code) +
         "&deviceId=" +
         encodeURIComponent(deviceId);
+
 
     const response =
         await fetch(
@@ -1441,6 +1509,7 @@ async function loginIndividual(password, deviceId) {
             }
         );
 
+
     if (!response.ok) {
 
         throw new Error(
@@ -1449,7 +1518,40 @@ async function loginIndividual(password, deviceId) {
         );
     }
 
-    return await response.json();
+
+    const data =
+        await response.json();
+
+
+    /*
+     * Backend Individual mengembalikan:
+     *
+     * status
+     * message
+     * produk
+     * nama
+     * mulai
+     * expiry
+     *
+     * Tambahkan penanda agar unlockPage()
+     * mengetahui bahwa ini akses individual.
+     */
+
+    if (
+        String(data.status || "")
+            .toLowerCase()
+        === "success"
+    ) {
+
+        data.individual = true;
+
+        data.password = code;
+
+        data.code = code;
+    }
+
+
+    return data;
 }
 
 
@@ -1462,10 +1564,11 @@ async function doLogin() {
     const typedPassword =
         passwordInput.value.trim();
 
+
     if (!typedPassword) {
 
         loginMessage.textContent =
-            "Password wajib diisi.";
+            "Kode akses wajib diisi.";
 
         passwordInput.focus();
 
@@ -1495,10 +1598,10 @@ async function doLogin() {
          *
          * yeari0501 tetap menjadi ALIAS TEST.
          *
-         * Yang dikirim ke Apps Script B2B tetap:
+         * Yang dikirim ke Apps Script B2B:
          * PRC00
          *
-         * Sistem B2B lama tidak berubah.
+         * SISTEM B2B LAMA TIDAK DIUBAH.
          */
 
         const password =
@@ -1509,26 +1612,25 @@ async function doLogin() {
 
         /*
          * ==================================================
-         * INDIVIDUAL CAT
+         * INDIVIDUAL ACCESS
          * ==================================================
          *
-         * Kode individual memiliki format:
-         * CAT + 3 karakter
+         * Format kode:
          *
-         * Contoh:
-         * CAT7KQ
-         * CAT234
+         * 14POLxx
+         * 14TNIxx
+         * 14KDNxx
          *
-         * Jika kode diawali CAT, langsung diperiksa
-         * ke Apps Script individual.
+         * 30POLxx
+         * 30TNIxx
+         * 30KDNxx
          *
-         * Sistem B2B lama tidak disentuh.
+         * Jika cocok dengan format tersebut,
+         * kirim ke Apps Script Individual.
          */
 
         if (
-            password
-                .toUpperCase()
-                .startsWith("CAT")
+            isIndividualCode(password)
         ) {
 
             const individualData =
